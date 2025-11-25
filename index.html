@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione Prove Band - V3</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --accent-color: #00bcd4;
+            --secondary-color: #1e1e1e;
+            --user-me: #4caf50;
+            --user-others: #ff9800;
+            --danger-color: #f44336;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* LOGIN */
+        #login-section {
+            background: var(--secondary-color);
+            padding: 30px; border-radius: 10px; margin-top: 50px;
+            text-align: center; width: 90%; max-width: 400px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        select, button {
+            padding: 12px; font-size: 16px; border-radius: 5px; border: none;
+            margin: 10px 0; width: 100%; box-sizing: border-box; cursor: pointer;
+        }
+        
+        button.primary { background-color: var(--accent-color); color: #000; font-weight: bold; }
+        button.danger { background-color: var(--danger-color); color: white; width: auto; padding: 5px 15px; font-size: 14px; }
+        button.success { background-color: var(--user-me); color: white; font-weight: bold; margin-top: 20px;}
+        
+        select { background: #333; color: white; border: 1px solid #555; }
+
+        /* APP HEADER */
+        #app-section { display: none; width: 100%; max-width: 900px; }
+        
+        .header-info {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--secondary-color); padding: 15px; border-radius: 8px; margin-bottom: 20px;
+            border-bottom: 2px solid var(--accent-color);
+        }
+
+        /* CALENDAR */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+        .day-name { text-align: center; font-size: 0.8em; color: #888; padding: 5px; text-transform: uppercase; }
+        .calendar-day {
+            background: var(--secondary-color); aspect-ratio: 1/1;
+            border-radius: 5px; padding: 5px; cursor: pointer; position: relative;
+            border: 1px solid #333; display: flex; flex-direction: column; justify-content: space-between;
+            transition: transform 0.1s;
+        }
+        .calendar-day:active { transform: scale(0.95); }
+        .calendar-day.has-booking { background: #2a2a2a; border-color: #555; }
+        .dot { width: 8px; height: 8px; background-color: var(--accent-color); border-radius: 50%; align-self: center; margin-bottom: 5px;}
+
+        /* MODAL */
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center;
+            overflow-y: auto;
+        }
+        .modal-content {
+            background: var(--secondary-color); padding: 25px; border-radius: 10px;
+            width: 95%; max-width: 500px; position: relative; border: 1px solid #444;
+        }
+        .close-btn { position: absolute; top: 10px; right: 15px; font-size: 28px; cursor: pointer; color: #888; }
+
+        /* SLOT SELECTION */
+        .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 20px 0; }
+        .time-slot {
+            padding: 10px; background: #333; text-align: center; border-radius: 5px; cursor: pointer; font-size: 0.9em;
+            border: 2px solid transparent; user-select: none;
+        }
+        .time-slot strong { display: block; font-size: 1.1em; margin-bottom: 3px; }
+        
+        .time-slot.selected-by-me { border-color: var(--user-me); background: rgba(76, 175, 80, 0.2); }
+        .time-slot.occupied-others { background: rgba(255, 152, 0, 0.2); }
+
+        /* GANTT */
+        #gantt-container { margin-top: 30px; background: var(--secondary-color); padding: 15px; border-radius: 10px; overflow-x: auto; border: 1px solid #333; }
+        .gantt-row { display: flex; margin-bottom: 15px; align-items: center; height: 35px; }
+        .gantt-label { width: 90px; font-size: 0.85em; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; text-align: right;}
+        .gantt-timeline { flex-grow: 1; display: flex; height: 100%; background: #252525; position: relative; min-width: 600px; border-radius: 4px; }
+        
+        .gantt-tick {
+            position: absolute; top: 0; bottom: 0; border-left: 1px solid #444;
+            font-size: 0.7em; color: #888; padding-left: 2px; top: -20px;
+        }
+        
+        .gantt-block {
+            position: absolute; height: 70%; top: 15%;
+            background: var(--accent-color); border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-section">
+        <h1 style="color:var(--accent-color)">🎸 Prove Band</h1>
+        <p>Login senza password</p>
+        <select id="user-select">
+            <option value="" disabled selected>Seleziona il tuo nome...</option>
+        </select>
+        <button class="primary" onclick="login()">ENTRA</button>
+    </div>
+
+    <div id="app-section">
+        <div class="header-info">
+            <div>
+                <h2 id="month-title" style="margin:0; font-size:1.2em"></h2>
+                <div style="font-size:0.9em; color:#aaa; margin-top:5px">
+                    Ciao, <b id="display-user" style="color:var(--accent-color)"></b>
+                </div>
+            </div>
+            <button class="danger" onclick="logout()">ESCI</button>
+        </div>
+
+        <div class="calendar-grid" id="calendar"></div>
+
+        <div id="gantt-container" style="display:none">
+            <h3 style="margin-top:0">Diagramma Orari: <span id="gantt-date" style="color:var(--accent-color)"></span></h3>
+            <div id="gantt-chart"></div>
+        </div>
+    </div>
+
+    <div id="booking-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h3 id="modal-title"></h3>
+            <p style="font-size:0.85em; color:#aaa">Tocca le caselle per segnarti. Arancione = Altri presenti.</p>
+            
+            <div class="slots-grid" id="slots-container"></div>
+            
+            <button class="success" onclick="saveAndClose()">OK - CONFERMA E SALVA</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAZIONE FIREBASE ---
+        // INCOLLA QUI LA TUA CONFIGURAZIONE
+        const firebaseConfig = {
+            apiKey: "AIzaSyDremTJN2eU1gQyjaVTR0sn25M6rsNPJM8", 
+            authDomain: "sos-app-8c460.firebaseapp.com",
+            databaseURL: "https://sos-app-8c460-default-rtdb.firebaseio.com",
+            projectId: "sos-app-8c460",
+            storageBucket: "sos-app-8c460.firebasestorage.app",
+            messagingSenderId: "100703240460",
+            appId: "1:100703240460:web:f03bcbe1bc2086e56ac929"
+        };
+
+        let db;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+        } catch (e) {
+            console.error("Errore Firebase. Hai inserito la config?");
+        }
+
+        // --- VARIABILI GLOBALI ---
+        const bandMembers = ["Pintore", "Frappa", "Chiappini", "Valers", "Fusco", "Dino"];
+        let currentUser = null;
+        let globalData = {}; // Dati scaricati dal cloud
+        let selectedDate = null;
+        let tempBookingData = {}; // Dati temporanei durante la modifica nel modale
+        
+        // Generazione orari (15:00 - 21:00) step 30 min
+        const timeSlots = [];
+        for(let h=15; h<21; h++) {
+            timeSlots.push(`${h}:00`);
+            timeSlots.push(`${h}:30`);
+        }
+        timeSlots.push("21:00");
+
+        // --- INIZIO ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const select = document.getElementById('user-select');
+            bandMembers.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m; opt.textContent = m;
+                select.appendChild(opt);
+            });
+        });
+
+        // --- LOGIN / LOGOUT ---
+        function login() {
+            const user = document.getElementById('user-select').value;
+            if(!user) return alert("Seleziona un nome!");
+            currentUser = user;
+            
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('app-section').style.display = 'block';
+            document.getElementById('display-user').textContent = user;
+            
+            startListeningToData();
+        }
+
+        function logout() {
+            // Semplice reload della pagina per pulire tutto
+            location.reload();
+        }
+
+        // --- DATABASE SYNC ---
+        function startListeningToData() {
+            const dataRef = db.ref('prove');
+            dataRef.on('value', (snapshot) => {
+                globalData = snapshot.val() || {};
+                renderCalendar();
+                // Se il modale NON è aperto, aggiorna anche il gantt (se visibile)
+                // Se il modale è aperto, NON aggiorniamo per non disturbare chi sta modificando
+                if(selectedDate && document.getElementById('booking-modal').style.display === 'none') {
+                    renderGantt(selectedDate);
+                }
+            });
+        }
+
+        // --- CALENDARIO ---
+        function renderCalendar() {
+            const cal = document.getElementById('calendar');
+            cal.innerHTML = '';
+            
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            
+            // Intestazione giorni
+            ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"].forEach(d => 
+                cal.innerHTML += `<div class="day-name">${d}</div>`
+            );
+            
+            const monthNames = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+            document.getElementById('month-title').textContent = `${monthNames[month]} ${year}`;
+
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
+
+            for(let i=0; i<firstDay; i++) cal.innerHTML += '<div></div>';
+
+            for(let i=1; i<=daysInMonth; i++) {
+                const dateKey = `${year}-${month+1}-${i}`;
+                const dayData = globalData[dateKey] || {};
+                const hasBooking = Object.keys(dayData).length > 0;
+                
+                const el = document.createElement('div');
+                el.className = `calendar-day ${hasBooking ? 'has-booking' : ''}`;
+                el.onclick = () => openModal(dateKey);
+                
+                let dot = hasBooking ? `<div class="dot"></div>` : '';
+                el.innerHTML = `<span style="font-weight:bold">${i}</span>${dot}`;
+                cal.appendChild(el);
+            }
+        }
+
+        // --- MODALE E GESTIONE PRENOTAZIONE ---
+        function openModal(dateKey) {
+            selectedDate = dateKey;
+            
+            // 1. Facciamo una COPIA locale dei dati per modificarli senza salvare subito
+            // Usiamo JSON per fare una copia profonda ed evitare riferimenti
+            const existingData = globalData[dateKey] || {};
+            tempBookingData = JSON.parse(JSON.stringify(existingData));
+
+            document.getElementById('booking-modal').style.display = 'flex';
+            document.getElementById('modal-title').textContent = `Prenota per il ${dateKey}`;
+            
+            renderSlots(); // Renderizza usando i dati temporanei
+        }
+
+        function closeModal() {
+            document.getElementById('booking-modal').style.display = 'none';
+            // Se chiudo senza salvare, i dati temporanei vengono persi (corretto)
+        }
+
+        function renderSlots() {
+            const container = document.getElementById('slots-container');
+            container.innerHTML = '';
+
+            timeSlots.forEach(time => {
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'time-slot';
+                
+                // Leggiamo dalla variabile TEMPORANEA
+                let occupants = tempBookingData[time] || [];
+                if (!Array.isArray(occupants)) occupants = [occupants].filter(Boolean);
+
+                const amIHere = occupants.includes(currentUser);
+                
+                if (amIHere) slotDiv.classList.add('selected-by-me');
+                else if (occupants.length > 0) slotDiv.classList.add('occupied-others');
+                
+                let label = "Libero";
+                if(occupants.length > 0) label = occupants.join(', ');
+
+                slotDiv.innerHTML = `<strong>${time}</strong><small>${label}</small>`;
+                
+                // Al click modifichiamo solo la variabile temporanea
+                slotDiv.onclick = () => toggleTempBooking(time, occupants);
+                
+                container.appendChild(slotDiv);
+            });
+        }
+
+        function toggleTempBooking(time, currentOccupants) {
+            let newOccupants = [...currentOccupants];
+            
+            if (newOccupants.includes(currentUser)) {
+                newOccupants = newOccupants.filter(u => u !== currentUser);
+            } else {
+                newOccupants.push(currentUser);
+            }
+
+            if(newOccupants.length > 0) {
+                tempBookingData[time] = newOccupants;
+            } else {
+                delete tempBookingData[time];
+            }
+
+            renderSlots(); // Ridisegna per mostrare il cambiamento di colore
+        }
+
+        function saveAndClose() {
+            // TASTO OK: Ora scriviamo su Firebase
+            db.ref(`prove/${selectedDate}`).set(tempBookingData)
+                .then(() => {
+                    closeModal();
+                    renderGantt(selectedDate); // Aggiorna Gantt dopo il salvataggio
+                })
+                .catch(err => alert("Errore salvataggio: " + err.message));
+        }
+
+        // --- DIAGRAMMA GANTT ---
+        function renderGantt(dateKey) {
+            const chart = document.getElementById('gantt-chart');
+            const container = document.getElementById('gantt-container');
+            chart.innerHTML = '';
+            
+            const dayData = globalData[dateKey];
+            if(!dayData) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            document.getElementById('gantt-date').textContent = dateKey;
+
+            let activeMembers = new Set();
+            Object.values(dayData).forEach(occupants => {
+                if(Array.isArray(occupants)) occupants.forEach(u => activeMembers.add(u));
+                else activeMembers.add(occupants);
+            });
+
+            // HEADER ORARI (Con tutte le mezz'ore)
+            // Aggiungiamo un padding-top per le etichette
+            let headerHtml = `<div class="gantt-row" style="height:20px; margin-bottom:20px">
+                                <div class="gantt-label"></div>
+                                <div class="gantt-timeline" style="background:transparent;">`;
+            
+            timeSlots.forEach((t, i) => {
+                if(i === timeSlots.length - 1) return; // Salta l'ultima etichetta di chiusura per pulizia
+
+                // Calcolo posizione
+                const leftPos = (i / (timeSlots.length - 1)) * 100;
+                headerHtml += `<div class="gantt-tick" style="left:${leftPos}%">${t}</div>`;
+            });
+            headerHtml += `</div></div>`;
+            chart.innerHTML += headerHtml;
+
+            // RIGHE UTENTI
+            activeMembers.forEach(member => {
+                const row = document.createElement('div');
+                row.className = 'gantt-row';
+                row.innerHTML = `<div class="gantt-label">${member}</div>`;
+                
+                const timeline = document.createElement('div');
+                timeline.className = 'gantt-timeline';
+                
+                timeSlots.forEach((time, index) => {
+                    if(index === timeSlots.length - 1) return;
+
+                    const occupants = dayData[time];
+                    if (occupants && (occupants === member || (Array.isArray(occupants) && occupants.includes(member)))) {
+                        const block = document.createElement('div');
+                        block.className = 'gantt-block';
+                        
+                        const startPercent = (index / (timeSlots.length - 1)) * 100;
+                        const widthPercent = (1 / (timeSlots.length - 1)) * 100;
+                        
+                        block.style.left = startPercent + "%";
+                        block.style.width = (widthPercent - 0.2) + "%"; // Piccolo gap visivo
+                        timeline.appendChild(block);
+                    }
+                });
+                
+                row.appendChild(timeline);
+                chart.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>
