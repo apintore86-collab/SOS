@@ -412,6 +412,124 @@
                 chart.appendChild(row);
             });
         }
+
+        // --- SEZIONE 2: CANZONI PROPOSTE ---
+        
+        function saveSongSuggestion() {
+            const title = document.getElementById('song-title').value.trim();
+            const artist = document.getElementById('song-artist').value.trim();
+
+            if (!title || !artist) {
+                alert("Inserisci Titolo e Artista!");
+                return;
+            }
+
+            const newSong = {
+                title: title,
+                artist: artist,
+                suggestedBy: currentUser,
+                timestamp: Date.now()
+            };
+
+            // Firebase push per creare un ID univoco
+            db.ref('songs').push(newSong)
+                .then(() => {
+                    alert(`Canzone "${title}" proposta con successo!`);
+                    document.getElementById('song-title').value = '';
+                    document.getElementById('song-artist').value = '';
+                })
+                .catch(err => alert("Errore di salvataggio: " + err.message));
+        }
+
+        function renderSongsList() {
+            const container = document.getElementById('songs-list-container');
+            const songs = globalData.songs || {};
+            container.innerHTML = '';
+            
+            const songArray = Object.keys(songs).map(key => ({ id: key, ...songs[key] }));
+            songArray.sort((a, b) => b.timestamp - a.timestamp); // Ordina per più recenti
+
+            if (songArray.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#888;">Nessuna canzone proposta...</p>';
+                return;
+            }
+
+            songArray.forEach(song => {
+                const item = document.createElement('div');
+                item.className = 'card-item';
+                item.innerHTML = `
+                    <div>
+                        <p class="details">${song.title}</p>
+                        <p>${song.artist} | Proposta da: ${song.suggestedBy}</p>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+
+        // --- SEZIONE 3: SCALETTA SERATA ---
+
+        function saveSetlist() {
+            const date = document.getElementById('gig-date').value.trim();
+            const venue = document.getElementById('venue-name').value.trim();
+            const setlistText = document.getElementById('setlist-songs-text').value.trim();
+
+            if (!date || !venue || !setlistText) {
+                alert("Completa tutti i campi (Data, Locale e Scaletta).");
+                return;
+            }
+            
+            // Chiave univoca basata sulla data (formato AAAA-MM-GG)
+            const dateKey = date.replace(/-/g, ''); 
+
+            const setlistData = {
+                venue: venue,
+                date: date,
+                setlist: setlistText,
+                savedBy: currentUser,
+                timestamp: Date.now()
+            };
+
+            // Salva su Firebase con la data come chiave
+            db.ref(`setlists/${dateKey}`).set(setlistData)
+                .then(() => {
+                    alert(`Scaletta per ${venue} (${date}) salvata con successo!`);
+                    renderSetlistPage(); // Aggiorna la lista
+                })
+                .catch(err => alert("Errore di salvataggio: " + err.message));
+        }
+
+        function renderSetlistPage() {
+            const container = document.getElementById('setlists-container');
+            const setlists = globalData.setlists || {};
+            container.innerHTML = '';
+            
+            const setlistArray = Object.keys(setlists).map(key => setlists[key]);
+            setlistArray.sort((a, b) => new Date(a.date) - new Date(b.date)); // Ordina cronologicamente
+
+            if (setlistArray.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#888;">Nessuna scaletta salvata.</p>';
+                return;
+            }
+
+            setlistArray.forEach(gig => {
+                const item = document.createElement('div');
+                item.className = 'card-item setlist-song';
+                item.innerHTML = `
+                    <div style="flex-grow:1;">
+                        <p class="details" style="font-size:1.1em; color:var(--user-me);">${gig.venue} (${gig.date})</p>
+                        <pre style="margin:5px 0 0; white-space: pre-wrap; font-size: 0.9em;">${gig.setlist}</pre>
+                    </div>
+                    <div style="font-size:0.8em; color:#bbb; text-align:right;">
+                        Salvata da: ${gig.savedBy}
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
     </script>
+</body>
+</html>    </script>
 </body>
 </html>
